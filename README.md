@@ -3,8 +3,8 @@
 ## Utilities
 
 * `utils/boot-splash` - Sense HAT python daemon to display Raspberry PI status.
-* `utils/picopulse` - Utility to pulse UPS Pico HAT periodically, indicating Raspberry PI is alive
-* `utils/pico_status.py` - Utility to show current UPS Pico HAT status
+* `utils/picopulse` - Utility to pulse [UPS Pico HAT](http://www.pimodules.com) periodically, indicating Raspberry PI is alive
+* `utils/pico_status.py` - Utility to show current [UPS Pico HAT](http://www.pimodules.com) status
 
 ## init.d scripts
 
