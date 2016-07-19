@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+
+import daemon
+import fcntl
+import sys, os
+import signal
+import syslog
+
+class PidFile(object):
+    """Context manager that locks a pid file.  Implemented as class
+    not generator because daemon.py is calling .__exit__() with no parameters
+    instead of the None, None, None specified by PEP-343."""
+    # pylint: disable=R0903
+
+    def __init__(self, path):
+        self.path = path
+        self.pidfile = None
+
+    def __enter__(self):
+        self.pidfile = open(self.path, "a+")
+        try:
+            fcntl.flock(self.pidfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except IOError:
+            raise SystemExit("Already running according to " + self.path)
+        self.pidfile.seek(0)
+        self.pidfile.truncate()
+        self.pidfile.write(str(os.getpid()))
+        self.pidfile.flush()
+        self.pidfile.seek(0)
+        return self.pidfile
+
+    def __exit__(self, exc_type=None, exc_value=None, exc_tb=None):
+        try:
+            self.pidfile.close()
+        except IOError as err:
+            # ok if file was just closed elsewhere
+            if err.errno != 9:
+                raise
+        os.remove(self.path)
+
+detach = (sys.argv[1] == '-d' if len(sys.argv) > 1 else False)
+
+with daemon.DaemonContext(detach_process=detach, pidfile=PidFile("/var/run/picopulse.pid")):
+	import RPi.GPIO as GPIO
+	import time
+	import os
+        import setproctitle
+	 
+        setproctitle.setproctitle(' '.join(sys.argv))
+        
+	GPIO.setmode(GPIO.BCM) # Set pin numbering to board numbering
+	GPIO.setup(22, GPIO.OUT) # Setup pin 22 as an output
+	
+	while True:
+	    GPIO.output(22,True)
+	    time.sleep(0.25) # Allow a sleep time of 0.25 second to reduce CPU usage
+	    GPIO.output(22,False)
+	    time.sleep(0.25) # Allow a sleep time of 0.25 second to reduce CPU usage
+

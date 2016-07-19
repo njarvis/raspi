@@ -1,0 +1,158 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          raspi-setup
+# Required-Start:    $syslog
+# Required-Stop:     $syslog
+# Default-Start:     1 2 3 4 5
+# Default-Stop:      0 6
+# Short-Description: Determine and setup Raspberry PI on boot
+# Description:       On boot, set hostname based on Raspberry PI serial
+#                    number, and restore or refresh the host's SSH keys.
+
+### END INIT INFO
+
+# PATH should only include /usr/* if it runs after the mountnfs.sh script
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+DESC="Setup Raspberry PI based on serial number"
+NAME=raspi-setup
+SCRIPTNAME=/etc/init.d/$NAME
+SSHDISK=/mnt/sandisk
+
+# Read configuration variable file if it is present
+[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+
+# Load the VERBOSE setting and other rcS variables
+. /lib/init/vars.sh
+
+# Override VERBOSE
+VERBOSE=on
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.2-14) to ensure that this file is present
+# and status_of_proc is working.
+. /lib/lsb/init-functions
+
+do_set_hostname()
+{
+    MYSERIAL="$(cat /proc/cpuinfo | grep Serial | awk '{print $3}')"
+
+    [ "$VERBOSE" != no ] && log_success_msg "Determining hostname from serial number '$MYSERIAL'"
+
+    # Known Raspberry PIs
+    HOSTNAME=""
+    case "$MYSERIAL" in
+	000000007b6f780d)
+	    HOSTNAME="raspi-green"
+	    ;;
+	000000009dc6f2bf)
+	    HOSTNAME="raspi-blue"
+	    ;;
+	00000000ce5d8df4)
+	    HOSTNAME="raspi-black"
+	    ;;
+	00000000cb24cc64)
+	    HOSTNAME="raspi-red"
+	    ;;
+	00000000c719fea7)
+	    HOSTNAME="edin-dmz"
+	    ;;
+	*)
+	    [ "$VERBOSE" != no ] && log_failure_msg "Unknown serial number '$MYSERIAL'.  Setting hostname using defaults."
+	    HOSTNAME="raspberrypi"
+	    ;;
+    esac
+
+    # Record the name we have chosen from the serial number
+    if [ ! -z "$HOSTNAME" ] ; then
+	echo $HOSTNAME > /etc/hostname
+	sed -i "s/127.0.1.1.*\$/127.0.1.1\t$HOSTNAME/g" /etc/hosts
+    fi
+
+    # Set hostname
+    [ -f /etc/hostname ] && HOSTNAME="$(cat /etc/hostname)"
+
+    # Keep current name if /etc/hostname is missing.
+    [ -z "$HOSTNAME" ] && HOSTNAME="$(hostname)"
+
+    # And set it to 'localhost' if no setting was found
+    [ -z "$HOSTNAME" ] && HOSTNAME=localhost
+
+    [ "$VERBOSE" != no ] && log_action_begin_msg "Setting hostname to '$HOSTNAME'"
+    hostname "$HOSTNAME"
+    ES=$?
+    [ "$VERBOSE" != no ] && log_action_end_msg $ES
+
+    return "$ES"
+}
+
+do_regen_ssh_keys()
+{
+    [ -f /etc/ssh/.ssh_hostname ] && SSH_HOSTNAME="$(cat /etc/ssh/.ssh_hostname)"
+
+    if [ -z "$SSH_HOSTNAME" -o "$HOSTNAME" != "$SSH_HOSTNAME" ] ; then
+	# Check for backed-up keys
+	[ -f $SSHDISK/ssh/.ssh_hostname ] && SSHDISK_HOSTNAME="$(cat $SSHDISK/ssh/.ssh_hostname)"
+
+	if [ -z "$SSHDISK_HOSTNAME" -o "$HOSTNAME" != "$SSHDISK_HOSTNAME" ] ; then
+	    [ "$VERBOSE" != no ] && log_action_begin_msg "Generating new SSH host keys for '$HOSTNAME'"
+	    rm -f /etc/ssh/ssh_host*key*
+	    ssh-keygen -A
+	    ES=$?
+	    [ "$VERBOSE" != no ] && log_action_end_msg $ES
+
+	    if grep -qs "$SSHDISK" /proc/mounts; then
+		[ "$VERBOSE" != no ] && log_action_begin_msg "Saving new SSH host keys for '$HOSTNAME' to $SSHDISK"
+		mkdir -p ${SSHDISK}/ssh && cp -a /etc/ssh/ssh_host*key* ${SSHDISK}/ssh && cp -a /etc/ssh/.ssh_hostname ${SSHDISK}/ssh
+		ES=$?
+		[ "$VERBOSE" != no ] && log_action_end_msg $ES
+	    else
+		[ "$VERBOSE" != no ] && log_failure_msg "Not saving new SSH host keys for '$HOSTNAME'. Disk $SSHDISK not mounted?"
+	    fi
+	else
+	    [ "$VERBOSE" != no ] && log_action_begin_msg "Restoring SSH host keys for '$HOSTNAME' from $SSHDISK"
+	    rm -f /etc/ssh/ssh_host*key*
+	    cp -a ${SSHDISK}/ssh/ssh_host*key* /etc/ssh
+	    ES=$?
+	    [ "$VERBOSE" != no ] && log_action_end_msg $ES
+	fi
+	echo $HOSTNAME > /etc/ssh/.ssh_hostname
+    else
+	[ "$VERBOSE" != no ] && log_success_msg "Keeping SSH host keys for '$HOSTNAME'"
+
+	# Check for backed-up keys
+	[ -f $SSHDISK/ssh/.ssh_hostname ] && SSHDISK_HOSTNAME="$(cat $SSHDISK/ssh/.ssh_hostname)"
+
+	if [ -z "$SSHDISK_HOSTNAME" -o "$HOSTNAME" != "$SSHDISK_HOSTNAME" ] ; then
+	    [ "$VERBOSE" != no ] && log_action_begin_msg "Backing up SSH host keys for '$HOSTNAME' to $SSHDISK"
+	    mkdir -p ${SSHDISK}/ssh && cp -a /etc/ssh/ssh_host*key* ${SSHDISK}/ssh && cp -a /etc/ssh/.ssh_hostname ${SSHDISK}/ssh
+	    ES=$?
+	    [ "$VERBOSE" != no ] && log_action_end_msg $ES
+	fi
+    fi
+
+    return "$ES"
+}
+
+case "$1" in
+  start|force|"")
+	do_set_hostname
+	do_regen_ssh_keys
+	exit 0
+	;;
+  restart|reload|force-reload)
+	echo "Error: argument '$1' not supported" >&2
+	exit 3
+	;;
+  stop)
+	# No-op
+	;;
+  status)
+	# No-op
+	;;
+  *)
+	echo "Usage: raspi-setup [start]" >&2
+	exit 3
+	;;
+esac
+
+:
