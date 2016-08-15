@@ -258,16 +258,19 @@ with daemon.DaemonContext(detach_process=detach, pidfile=PidFile("/var/run/boot-
                                 sense.set_pixel(p[0], p[1], rainbow[(p[1] * 8) + p[0]])
 
                     if parse_status and os.path.exists('/var/log/openvpn-status.log'):
-                        with open('/var/log/openvpn-status.log') as logfile:
-                            status = parse_status(logfile.read())
-                        for p in box:
-                            if len(status.client_list) > 0:
-                                sense.set_pixel(p[0], p[1], colours['red'])
-                            else:
-                                if hostcolour in colours:
-                                    sense.set_pixel(p[0], p[1], colours[hostcolour])
+                        try:
+                            with open('/var/log/openvpn-status.log') as logfile:
+                                status = parse_status(logfile.read())
+                            for p in box:
+                                if len(status.client_list) > 0:
+                                    sense.set_pixel(p[0], p[1], colours['red'])
                                 else:
-                                    sense.set_pixel(p[0], p[1], rainbow[(p[1] * 8) + p[0]])
+                                    if hostcolour in colours:
+                                        sense.set_pixel(p[0], p[1], colours[hostcolour])
+                                    else:
+                                        sense.set_pixel(p[0], p[1], rainbow[(p[1] * 8) + p[0]])
+                        except:
+                            pass
 
                     while int(time.time() % 5) != 0:
                         time.sleep(0.1)
